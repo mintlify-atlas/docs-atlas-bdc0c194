@@ -165,7 +165,7 @@ public class AttestationListener implements Listener {
             
             try {
                 // Convert to PublicKey object
-                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                KeyFactory keyFactory = KeyFactory.getInstance("EC");
                 PublicKey publicKey = keyFactory.generatePublic(keySpec);
                 
                 // Store for later use
@@ -298,7 +298,7 @@ public class SignatureVerifier implements Listener {
             
             try {
                 // Verify the signature
-                Signature signature = Signature.getInstance("SHA256withRSA");
+                Signature signature = Signature.getInstance("SHA256withECDSA");
                 signature.initVerify(publicKey);
                 signature.update(challengeData);
                 
@@ -372,7 +372,7 @@ public class AttestationPlugin extends JavaPlugin implements Listener {
             
             try {
                 // Store the public key
-                KeyFactory kf = KeyFactory.getInstance("RSA");
+                KeyFactory kf = KeyFactory.getInstance("EC");
                 PublicKey key = kf.generatePublic(event.getPublicKey());
                 registeredKeys.put(player.getUniqueId(), key);
                 
@@ -392,7 +392,7 @@ public class AttestationPlugin extends JavaPlugin implements Listener {
             
             try {
                 // Verify signature
-                Signature sig = Signature.getInstance("SHA256withRSA");
+                Signature sig = Signature.getInstance("SHA256withECDSA");
                 sig.initVerify(key);
                 sig.update(CHALLENGE);
                 

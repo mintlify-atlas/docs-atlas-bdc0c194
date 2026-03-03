@@ -92,7 +92,7 @@ The registration process involves sending a request packet to the client and lis
         
         public static void storePublicKey(UUID playerId, X509EncodedKeySpec keySpec) {
             try {
-                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                KeyFactory keyFactory = KeyFactory.getInstance("EC");
                 PublicKey publicKey = keyFactory.generatePublic(keySpec);
                 publicKeys.put(playerId, publicKey);
             } catch (Exception e) {
@@ -187,7 +187,7 @@ public class AttestationManager implements Listener {
             case SUCCESS:
                 // Convert and store the public key
                 try {
-                    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                    KeyFactory keyFactory = KeyFactory.getInstance("EC");
                     PublicKey publicKey = keyFactory.generatePublic(event.getPublicKey());
                     publicKeys.put(player.getUniqueId(), publicKey);
                     

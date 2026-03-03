@@ -391,10 +391,10 @@ public class AttestationExample implements Listener {
             // Verify the signature with the stored public key
             try {
                 X509EncodedKeySpec publicKeySpec = // ... retrieve stored key
-                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                KeyFactory keyFactory = KeyFactory.getInstance("EC");
                 PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
                 
-                Signature signature = Signature.getInstance("SHA256withRSA");
+                Signature signature = Signature.getInstance("SHA256withECDSA");
                 signature.initVerify(publicKey);
                 signature.update("verify_player".getBytes(StandardCharsets.UTF_8));
                 
