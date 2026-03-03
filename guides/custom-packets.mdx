@@ -1,0 +1,432 @@
+---
+title: Custom Packets
+description: Learn how to create and send custom packets to extend the Ember Client Server API
+---
+
+Custom packets allow you to extend the Ember Client Server API with your own communication protocol between the server and client. This enables you to build entirely new features beyond the built-in attestation system.
+
+## Understanding the Packet System
+
+The Ember Client Server API uses a bidirectional packet system:
+
+- **Outgoing packets** (`Out*`) - Sent from server to client
+- **Incoming packets** (`In*`) - Received from client to server
+- Each packet has a unique ID registered in the `PacketManager`
+
+<Note>
+  Custom packets work the same way as built-in packets like `OutAttestationRegister` and `InAttestationRegister`.
+</Note>
+
+## Creating Custom Packets
+
+<Steps>
+  <Step title="Create an outgoing packet class">
+    Extend the `Packet` base class and implement the `write()` method to serialize your data.
+
+    ```java
+    package com.example.plugin.packets;
+
+    import com.emberclient.serverapi.ByteBufWrapper;
+    import com.emberclient.serverapi.packet.Packet;
+
+    public class OutCustomMessage extends Packet {
+        private String message;
+        private int priority;
+        
+        public OutCustomMessage(String message, int priority) {
+            this.message = message;
+            this.priority = priority;
+        }
+        
+        @Override
+        public void write(ByteBufWrapper buf) {
+            // Write data to buffer
+            buf.writeString(message);
+            buf.writeVarInt(priority);
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Create an incoming packet class">
+    Extend the `Packet` base class and implement both `read()` and `handle()` methods.
+
+    ```java
+    package com.example.plugin.packets;
+
+    import com.emberclient.serverapi.ByteBufWrapper;
+    import com.emberclient.serverapi.packet.Packet;
+    import org.bukkit.Bukkit;
+    import org.bukkit.entity.Player;
+
+    public class InCustomResponse extends Packet {
+        private String response;
+        private boolean success;
+        
+        @Override
+        public void read(ByteBufWrapper buf) {
+            // Read data from buffer in same order as written
+            this.response = buf.readString();
+            this.success = buf.readBoolean();
+        }
+        
+        @Override
+        public void handle(Player player) {
+            // Handle the packet - fire event or process directly
+            Bukkit.getPluginManager().callEvent(
+                new CustomResponseEvent(player, response, success)
+            );
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Register packets with PacketManager">
+    Register your custom packets with unique IDs in the PacketManager.
+
+    ```java
+    import com.emberclient.serverapi.ECServerAPI;
+    import com.emberclient.serverapi.packet.PacketManager;
+
+    public class CustomPacketRegistry {
+        
+        public static void registerPackets() {
+            PacketManager manager = ECServerAPI.getInstance().getPacketManager();
+            
+            // Get access to the internal packet map (requires reflection)
+            // Or extend PacketManager in a fork
+            
+            // Register outgoing packet (3 is example ID, must be unique)
+            manager.registerPacket(3, OutCustomMessage.class);
+            
+            // Register incoming packet (1003 is example ID, must be unique)
+            manager.registerPacket(1003, InCustomResponse.class);
+        }
+    }
+    ```
+
+    <Warning>
+      The current PacketManager doesn't expose a public registration method. You'll need to either fork the API or use reflection to register custom packets. Future versions may include a public registration API.
+    </Warning>
+  </Step>
+
+  <Step title="Send your custom packet">
+    Use the `sendPacket()` method to send your custom packet to a player.
+
+    ```java
+    import com.emberclient.serverapi.ECServerAPI;
+    import org.bukkit.entity.Player;
+
+    public void sendCustomMessage(Player player, String message, int priority) {
+        // Verify player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            return;
+        }
+        
+        // Create and send the packet
+        OutCustomMessage packet = new OutCustomMessage(message, priority);
+        ECServerAPI.getInstance().sendPacket(player, packet);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete example implementing a custom notification system:
+
+```java OutNotification.java
+package com.example.plugin.packets;
+
+import com.emberclient.serverapi.ByteBufWrapper;
+import com.emberclient.serverapi.packet.Packet;
+
+/**
+ * Outgoing packet to send notifications to Ember Client
+ */
+public class OutNotification extends Packet {
+    private String title;
+    private String message;
+    private NotificationType type;
+    private long duration;
+    
+    public OutNotification(String title, String message, NotificationType type, long duration) {
+        this.title = title;
+        this.message = message;
+        this.type = type;
+        this.duration = duration;
+    }
+    
+    @Override
+    public void write(ByteBufWrapper buf) {
+        buf.writeString(title);
+        buf.writeString(message);
+        buf.writeEnum(type);
+        buf.writeVarLong(duration);
+    }
+    
+    public enum NotificationType {
+        INFO,
+        WARNING,
+        ERROR,
+        SUCCESS
+    }
+}
+```
+
+```java InNotificationResponse.java
+package com.example.plugin.packets;
+
+import com.emberclient.serverapi.ByteBufWrapper;
+import com.emberclient.serverapi.event.NotificationResponseEvent;
+import com.emberclient.serverapi.packet.Packet;
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+
+/**
+ * Incoming packet when client responds to a notification
+ */
+public class InNotificationResponse extends Packet {
+    private boolean acknowledged;
+    private long timestamp;
+    
+    @Override
+    public void read(ByteBufWrapper buf) {
+        this.acknowledged = buf.readBoolean();
+        this.timestamp = buf.readVarLong();
+    }
+    
+    @Override
+    public void handle(Player player) {
+        // Fire event for other plugins to listen to
+        Bukkit.getPluginManager().callEvent(
+            new NotificationResponseEvent(player, acknowledged, timestamp)
+        );
+    }
+}
+```
+
+```java NotificationManager.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import com.example.plugin.packets.OutNotification;
+import com.example.plugin.packets.OutNotification.NotificationType;
+import org.bukkit.entity.Player;
+
+/**
+ * Manager for sending notifications to Ember Client users
+ */
+public class NotificationManager {
+    
+    /**
+     * Send an info notification
+     */
+    public static void sendInfo(Player player, String title, String message) {
+        sendNotification(player, title, message, NotificationType.INFO, 5000);
+    }
+    
+    /**
+     * Send a warning notification
+     */
+    public static void sendWarning(Player player, String title, String message) {
+        sendNotification(player, title, message, NotificationType.WARNING, 8000);
+    }
+    
+    /**
+     * Send an error notification
+     */
+    public static void sendError(Player player, String title, String message) {
+        sendNotification(player, title, message, NotificationType.ERROR, 10000);
+    }
+    
+    /**
+     * Send a success notification
+     */
+    public static void sendSuccess(Player player, String title, String message) {
+        sendNotification(player, title, message, NotificationType.SUCCESS, 5000);
+    }
+    
+    /**
+     * Send a custom notification
+     */
+    public static void sendNotification(
+        Player player,
+        String title,
+        String message,
+        NotificationType type,
+        long duration
+    ) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        // Only send to Ember Client users
+        if (!api.isPlayerOnEmber(player.getUniqueId())) {
+            // Fallback to chat message
+            player.sendMessage("[" + type + "] " + title + ": " + message);
+            return;
+        }
+        
+        // Create and send notification packet
+        OutNotification packet = new OutNotification(title, message, type, duration);
+        api.sendPacket(player, packet);
+    }
+}
+```
+
+## ByteBufWrapper Methods
+
+The `ByteBufWrapper` class provides many useful methods for reading and writing data:
+
+### Primitive Types
+```java
+// Write
+buf.writeBoolean(true);
+buf.writeByte(10);
+buf.writeInt(100);
+buf.writeLong(1000L);
+buf.writeFloat(1.5f);
+buf.writeDouble(2.5);
+
+// Read
+boolean b = buf.readBoolean();
+byte by = buf.readByte();
+int i = buf.readInt();
+long l = buf.readLong();
+float f = buf.readFloat();
+double d = buf.readDouble();
+```
+
+### Variable Length Integers
+```java
+// More efficient for small numbers
+buf.writeVarInt(42);
+buf.writeVarLong(1234567L);
+
+int value = buf.readVarInt();
+long longValue = buf.readVarLong();
+```
+
+### Strings and Arrays
+```java
+// Strings
+buf.writeString("Hello World");
+String str = buf.readString();
+
+// Byte arrays
+buf.writeByteArray(new byte[]{1, 2, 3});
+byte[] bytes = buf.readByteArray();
+
+// Int arrays
+buf.writeVarIntArray(new int[]{10, 20, 30});
+int[] ints = buf.readVarIntArray();
+```
+
+### Enums and UUIDs
+```java
+// Enums
+buf.writeEnum(NotificationType.INFO);
+NotificationType type = buf.readEnum(NotificationType.class);
+
+// UUIDs
+buf.writeUuid(player.getUniqueId());
+UUID uuid = buf.readUuid();
+```
+
+### Collections
+```java
+// Lists
+List<String> names = Arrays.asList("Alice", "Bob");
+buf.writeCollection(names, ByteBuf::writeString);
+List<String> readNames = buf.readCollection(ArrayList::new, ByteBuf::readString);
+
+// Maps
+Map<String, Integer> scores = new HashMap<>();
+scores.put("Alice", 100);
+buf.writeMap(scores, ByteBuf::writeString, ByteBuf::writeVarInt);
+Map<String, Integer> readScores = buf.readMap(
+    HashMap::new, 
+    ByteBuf::readString, 
+    ByteBuf::readVarInt
+);
+```
+
+## Best Practices
+
+<Tip>
+  Always write and read data in the exact same order. The order matters!
+</Tip>
+
+<Tip>
+  Use `writeVarInt()` instead of `writeInt()` for small numbers to save bandwidth.
+</Tip>
+
+<Warning>
+  Always validate data on both client and server. Never trust incoming data without validation.
+</Warning>
+
+<Tip>
+  Use enums for type-safe packet data instead of magic numbers or strings.
+</Tip>
+
+## Packet ID Allocation
+
+The built-in packets use these ID ranges:
+
+- `1-999` - Outgoing packets (server to client)
+- `1001-1999` - Incoming packets (client to server)
+
+For custom packets, use:
+
+- `1000+` for outgoing packets (avoid 1001-1999)
+- `2000+` for incoming packets
+
+This prevents conflicts with future built-in packets.
+
+## Error Handling
+
+```java
+@Override
+public void read(ByteBufWrapper buf) {
+    try {
+        this.data = buf.readString();
+        this.value = buf.readVarInt();
+    } catch (Exception e) {
+        // Log the error
+        e.printStackTrace();
+        // Set default values
+        this.data = "";
+        this.value = 0;
+    }
+}
+```
+
+## Testing Custom Packets
+
+```java
+public class PacketTest {
+    
+    public void testPacketSerialization() {
+        // Create packet
+        OutCustomMessage original = new OutCustomMessage("Test", 5);
+        
+        // Write to buffer
+        ByteBufWrapper buf = new ByteBufWrapper(Unpooled.buffer());
+        original.write(buf);
+        
+        // Read back (simulate receiving)
+        String message = buf.readString();
+        int priority = buf.readVarInt();
+        
+        // Verify
+        assert message.equals("Test");
+        assert priority == 5;
+    }
+}
+```
+
+## Next Steps
+
+- Review the [ByteBufWrapper source code](https://github.com/emberclient/serverapi/blob/main/src/main/java/com/emberclient/serverapi/ByteBufWrapper.java) for all available methods
+- Study built-in packets like [OutAttestationSign](https://github.com/emberclient/serverapi/blob/main/src/main/java/com/emberclient/serverapi/packet/impl/attestation/sign/OutAttestationSign.java) for examples
+- Implement event classes for your incoming packets
+- Create a comprehensive packet protocol for your plugin

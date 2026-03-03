@@ -1,0 +1,380 @@
+---
+title: Player Detection
+description: Learn how to detect which players are using Ember Client on your server
+---
+
+Player detection allows you to identify which players are using Ember Client, enabling you to provide enhanced features and functionality specifically for Ember users.
+
+## Why Detect Ember Client Users?
+
+Detecting Ember Client users enables you to:
+
+- Provide exclusive features to Ember users
+- Send custom packets only to compatible clients
+- Display different UI elements or messages
+- Enable advanced security features like attestation
+- Track client usage statistics
+
+## Detection Methods
+
+There are two primary ways to detect Ember Client users:
+
+### Method 1: Using isPlayerOnEmber()
+
+The `isPlayerOnEmber()` method provides instant checking of a player's client status.
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import org.bukkit.entity.Player;
+
+public class PlayerChecker {
+    
+    /**
+     * Check if a player is using Ember Client
+     */
+    public boolean isEmberUser(Player player) {
+        return ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId());
+    }
+    
+    /**
+     * Execute different logic based on client type
+     */
+    public void handlePlayerAction(Player player) {
+        if (ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            // Enhanced features for Ember users
+            player.sendMessage("You're using Ember Client! Enhanced features enabled.");
+            enableEmberFeatures(player);
+        } else {
+            // Standard features for other clients
+            player.sendMessage("Using standard client features.");
+            enableStandardFeatures(player);
+        }
+    }
+}
+```
+
+<Note>
+  The `isPlayerOnEmber()` method returns `true` only after the player has fully connected and registered the plugin channel.
+</Note>
+
+### Method 2: Listening to EmberPlayerJoinEvent
+
+The `EmberPlayerJoinEvent` fires when a player using Ember Client joins the server, allowing you to react immediately.
+
+```java
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+public class EmberJoinListener implements Listener {
+    
+    @EventHandler
+    public void onEmberPlayerJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        
+        // Welcome message for Ember users
+        player.sendMessage("Welcome! Ember Client detected.");
+        player.sendMessage("Enhanced features are now available!");
+        
+        // Initialize Ember-specific features
+        initializeEmberFeatures(player);
+    }
+    
+    private void initializeEmberFeatures(Player player) {
+        // Setup player-specific Ember features
+    }
+}
+```
+
+<Tip>
+  Use `EmberPlayerJoinEvent` for initialization logic that should run once when an Ember user joins. Use `isPlayerOnEmber()` for ongoing checks during gameplay.
+</Tip>
+
+## Complete Examples
+
+### Example 1: Feature Gating
+
+Restrict certain features to Ember Client users only:
+
+```java FeatureGate.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+public class FeatureGate implements CommandExecutor {
+    
+    @Override
+    public boolean onCommand(
+        CommandSender sender, 
+        Command command, 
+        String label, 
+        String[] args
+    ) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage("This command is only for players.");
+            return true;
+        }
+        
+        Player player = (Player) sender;
+        
+        // Check if player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            player.sendMessage("This feature requires Ember Client!");
+            player.sendMessage("Download it at: https://emberclient.com");
+            return true;
+        }
+        
+        // Execute Ember-exclusive feature
+        executeEmberFeature(player);
+        return true;
+    }
+    
+    private void executeEmberFeature(Player player) {
+        player.sendMessage("Executing Ember-exclusive feature...");
+        // Your feature logic here
+    }
+}
+```
+
+### Example 2: Player Tracking
+
+Track and manage Ember Client users on your server:
+
+```java EmberPlayerTracker.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
+
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
+public class EmberPlayerTracker implements Listener {
+    private final Set<UUID> emberPlayers = new HashSet<>();
+    
+    /**
+     * Track when Ember players join
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEmberJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        emberPlayers.add(player.getUniqueId());
+        
+        // Log the join
+        System.out.println(player.getName() + " joined using Ember Client");
+        
+        // Notify staff
+        notifyStaff(player.getName() + " is using Ember Client");
+    }
+    
+    /**
+     * Clean up when players leave
+     */
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        emberPlayers.remove(event.getPlayer().getUniqueId());
+    }
+    
+    /**
+     * Get the count of online Ember users
+     */
+    public int getEmberPlayerCount() {
+        return emberPlayers.size();
+    }
+    
+    /**
+     * Check if a player is tracked as an Ember user
+     */
+    public boolean isTrackedEmberPlayer(UUID playerId) {
+        return emberPlayers.contains(playerId);
+    }
+    
+    /**
+     * Get all online Ember players
+     */
+    public Set<UUID> getEmberPlayers() {
+        return new HashSet<>(emberPlayers);
+    }
+    
+    private void notifyStaff(String message) {
+        // Implementation for staff notification
+    }
+}
+```
+
+### Example 3: Conditional Packet Sending
+
+Only send custom packets to players using Ember Client:
+
+```java ConditionalPacketSender.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.packet.Packet;
+import org.bukkit.entity.Player;
+
+import java.util.Collection;
+
+public class ConditionalPacketSender {
+    
+    /**
+     * Send a packet only to Ember Client users
+     */
+    public void sendToEmberPlayers(Collection<Player> players, Packet packet) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        for (Player player : players) {
+            if (api.isPlayerOnEmber(player.getUniqueId())) {
+                api.sendPacket(player, packet);
+            }
+        }
+    }
+    
+    /**
+     * Send a packet with fallback message for non-Ember users
+     */
+    public void sendWithFallback(
+        Player player, 
+        Packet packet, 
+        String fallbackMessage
+    ) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        if (api.isPlayerOnEmber(player.getUniqueId())) {
+            api.sendPacket(player, packet);
+        } else {
+            player.sendMessage(fallbackMessage);
+        }
+    }
+    
+    /**
+     * Broadcast to all Ember users on the server
+     */
+    public void broadcastToEmberUsers(Packet packet) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        for (Player player : org.bukkit.Bukkit.getOnlinePlayers()) {
+            if (api.isPlayerOnEmber(player.getUniqueId())) {
+                api.sendPacket(player, packet);
+            }
+        }
+    }
+}
+```
+
+## Use Cases
+
+### Enhanced UI Features
+
+```java
+if (ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+    // Send custom UI packets
+    sendCustomUI(player);
+} else {
+    // Use standard chat messages
+    player.sendMessage("Welcome to the server!");
+}
+```
+
+### Security Features
+
+```java
+public void enableSecureMode(Player player) {
+    if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+        player.sendMessage("Secure mode requires Ember Client.");
+        return;
+    }
+    
+    // Request attestation registration
+    requestAttestation(player);
+}
+```
+
+### Analytics and Statistics
+
+```java
+@EventHandler
+public void onEmberJoin(EmberPlayerJoinEvent event) {
+    // Track usage statistics
+    analytics.incrementEmberUserCount();
+    analytics.recordClientVersion(event.getPlayer());
+}
+```
+
+## Best Practices
+
+<Tip>
+  Always check `isPlayerOnEmber()` before sending custom packets to avoid errors.
+</Tip>
+
+<Tip>
+  Use `EmberPlayerJoinEvent` for one-time initialization logic rather than repeatedly checking player status.
+</Tip>
+
+<Warning>
+  Don't use player detection as the sole security measure. Always validate actions server-side regardless of client type.
+</Warning>
+
+## Event Timing
+
+The `EmberPlayerJoinEvent` is fired:
+
+1. After the player has fully connected to the server
+2. After the player has registered the `ember:data` plugin channel
+3. Before most plugin join events (use `EventPriority.MONITOR` to run last)
+
+```java
+@EventHandler(priority = EventPriority.LOW)
+public void onEmberJoinEarly(EmberPlayerJoinEvent event) {
+    // Runs early - good for initialization
+}
+
+@EventHandler(priority = EventPriority.MONITOR)
+public void onEmberJoinLate(EmberPlayerJoinEvent event) {
+    // Runs late - good for final setup
+}
+```
+
+## Integration with Other Systems
+
+### Permission-Based Access
+
+```java
+public boolean canUseFeature(Player player) {
+    // Require both permission and Ember Client
+    return player.hasPermission("plugin.feature") 
+        && ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId());
+}
+```
+
+### Database Integration
+
+```java
+@EventHandler
+public void onEmberJoin(EmberPlayerJoinEvent event) {
+    Player player = event.getPlayer();
+    
+    // Store in database
+    database.updatePlayerClient(player.getUniqueId(), "EMBER");
+    
+    // Load Ember-specific settings
+    loadEmberSettings(player);
+}
+```
+
+## Next Steps
+
+- Implement [attestation registration](/guides/attestation-registration) for enhanced security
+- Create [custom packets](/guides/custom-packets) for Ember-specific features
+- Build exclusive features that leverage Ember Client capabilities

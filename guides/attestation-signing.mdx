@@ -1,0 +1,391 @@
+---
+title: Attestation Signing
+description: Learn how to implement attestation signing to verify signed data from Ember Client users
+---
+
+Attestation signing is the verification step that follows registration. It allows your server to send data to the client for signing, then verify the signature using the previously registered public key.
+
+## What is Attestation Signing?
+
+Attestation signing enables you to:
+
+- Verify that a specific action was approved by the client
+- Authenticate client-side operations
+- Establish cryptographic proof of user consent
+- Prevent unauthorized actions or impersonation
+
+The process involves creating verification data, sending it to the client for signing, and then verifying the returned signature.
+
+<Note>
+  Before implementing signing, you must first complete [attestation registration](/guides/attestation-registration) to obtain the player's public key.
+</Note>
+
+## Implementation Steps
+
+<Steps>
+  <Step title="Create verification bytes">
+    Generate the data you want the client to sign. This should be unique and meaningful to your use case.
+
+    ```java
+    import java.nio.charset.StandardCharsets;
+    import java.security.SecureRandom;
+    import java.util.Base64;
+
+    public class VerificationDataGenerator {
+        
+        /**
+         * Create verification data from a message
+         */
+        public static byte[] createVerificationData(String message) {
+            return message.getBytes(StandardCharsets.UTF_8);
+        }
+        
+        /**
+         * Generate a random challenge for verification
+         */
+        public static byte[] generateChallenge() {
+            byte[] challenge = new byte[32];
+            new SecureRandom().nextBytes(challenge);
+            return challenge;
+        }
+        
+        /**
+         * Create verification data with timestamp
+         */
+        public static byte[] createTimestampedData(String action, long timestamp) {
+            String data = action + ":" + timestamp;
+            return data.getBytes(StandardCharsets.UTF_8);
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Send the signing request">
+    Create and send an `OutAttestationSign` packet with your verification data.
+
+    ```java
+    import com.emberclient.serverapi.ECServerAPI;
+    import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+    import org.bukkit.entity.Player;
+
+    public void requestSigning(Player player, byte[] verificationData) {
+        // Verify player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            player.sendMessage("You must be using Ember Client.");
+            return;
+        }
+        
+        // Send the signing packet
+        OutAttestationSign packet = new OutAttestationSign(verificationData);
+        ECServerAPI.getInstance().sendPacket(player, packet);
+        
+        player.sendMessage("Please sign the request in your client.");
+    }
+    ```
+  </Step>
+
+  <Step title="Listen for the signing event">
+    Create an event listener to handle the `EmberAttestationSignEvent` when the client responds.
+
+    ```java
+    import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+    import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+    import org.bukkit.event.EventHandler;
+    import org.bukkit.event.Listener;
+
+    public class SigningListener implements Listener {
+        
+        @EventHandler
+        public void onAttestationSign(EmberAttestationSignEvent event) {
+            Player player = event.getPlayer();
+            AttestationSignResult status = event.getStatus();
+            
+            switch (status) {
+                case SUCCESS:
+                    handleSuccessfulSigning(player, event.getSignedData());
+                    break;
+                case SIGNING_NOT_ALLOWED:
+                    player.sendMessage("Signing is not allowed on your client.");
+                    break;
+                case SIGN_DATA_INVALID:
+                    player.sendMessage("The verification data was invalid.");
+                    break;
+                case USER_CANCELLED:
+                    player.sendMessage("You cancelled the signing request.");
+                    break;
+                case KEY_DOES_NOT_EXIST:
+                    player.sendMessage("Please register for attestation first.");
+                    break;
+                case UNKNOWN_ERROR:
+                    player.sendMessage("An unknown error occurred during signing.");
+                    break;
+            }
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Verify the signed data">
+    Use the player's stored public key to verify the signature.
+
+    ```java
+    import java.security.PublicKey;
+    import java.security.Signature;
+
+    public class SignatureVerifier {
+        
+        /**
+         * Verify signed data using the player's public key
+         */
+        public static boolean verifySignature(
+            PublicKey publicKey, 
+            byte[] originalData, 
+            byte[] signedData
+        ) {
+            try {
+                Signature signature = Signature.getInstance("SHA256withRSA");
+                signature.initVerify(publicKey);
+                signature.update(originalData);
+                return signature.verify(signedData);
+            } catch (Exception e) {
+                e.printStackTrace();
+                return false;
+            }
+        }
+    }
+
+    private void handleSuccessfulSigning(Player player, byte[] signedData) {
+        // Retrieve the original verification data and public key
+        byte[] originalData = getStoredVerificationData(player.getUniqueId());
+        PublicKey publicKey = PublicKeyStorage.getPublicKey(player.getUniqueId());
+        
+        if (publicKey == null) {
+            player.sendMessage("No public key found. Please register first.");
+            return;
+        }
+        
+        // Verify the signature
+        boolean valid = SignatureVerifier.verifySignature(
+            publicKey, 
+            originalData, 
+            signedData
+        );
+        
+        if (valid) {
+            player.sendMessage("Signature verified successfully!");
+            // Proceed with the authenticated action
+        } else {
+            player.sendMessage("Signature verification failed!");
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete implementation showing how to request signing and verify the result:
+
+```java SigningManager.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.nio.charset.StandardCharsets;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class SigningManager implements Listener {
+    private final Map<UUID, PublicKey> publicKeys;
+    private final Map<UUID, byte[]> pendingVerifications = new HashMap<>();
+    
+    public SigningManager(Map<UUID, PublicKey> publicKeys) {
+        this.publicKeys = publicKeys;
+    }
+    
+    /**
+     * Request a player to sign a specific action
+     */
+    public void requestActionSigning(Player player, String action) {
+        // Verify player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            player.sendMessage("You must be using Ember Client.");
+            return;
+        }
+        
+        // Verify player has registered
+        if (!publicKeys.containsKey(player.getUniqueId())) {
+            player.sendMessage("Please register for attestation first.");
+            return;
+        }
+        
+        // Create verification data with timestamp
+        String data = action + ":" + System.currentTimeMillis();
+        byte[] verificationBytes = data.getBytes(StandardCharsets.UTF_8);
+        
+        // Store for later verification
+        pendingVerifications.put(player.getUniqueId(), verificationBytes);
+        
+        // Send signing request
+        OutAttestationSign packet = new OutAttestationSign(verificationBytes);
+        ECServerAPI.getInstance().sendPacket(player, packet);
+        
+        player.sendMessage("Please approve the action: " + action);
+    }
+    
+    /**
+     * Handle signing responses
+     */
+    @EventHandler
+    public void onAttestationSign(EmberAttestationSignEvent event) {
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        AttestationSignResult status = event.getStatus();
+        
+        // Remove pending verification
+        byte[] originalData = pendingVerifications.remove(playerId);
+        
+        switch (status) {
+            case SUCCESS:
+                if (originalData == null) {
+                    player.sendMessage("No pending verification found.");
+                    return;
+                }
+                
+                // Verify the signature
+                PublicKey publicKey = publicKeys.get(playerId);
+                boolean verified = verifySignature(
+                    publicKey, 
+                    originalData, 
+                    event.getSignedData()
+                );
+                
+                if (verified) {
+                    player.sendMessage("Action verified and approved!");
+                    executeVerifiedAction(player);
+                } else {
+                    player.sendMessage("Signature verification failed!");
+                }
+                break;
+                
+            case SIGNING_NOT_ALLOWED:
+                player.sendMessage("Signing is disabled in your client settings.");
+                break;
+                
+            case SIGN_DATA_INVALID:
+                player.sendMessage("The verification data was invalid.");
+                break;
+                
+            case USER_CANCELLED:
+                player.sendMessage("You cancelled the signing request.");
+                break;
+                
+            case KEY_DOES_NOT_EXIST:
+                player.sendMessage("Please complete attestation registration first.");
+                break;
+                
+            case UNKNOWN_ERROR:
+                player.sendMessage("An error occurred. Please try again.");
+                break;
+        }
+    }
+    
+    /**
+     * Verify a signature using RSA with SHA-256
+     */
+    private boolean verifySignature(PublicKey publicKey, byte[] data, byte[] signature) {
+        try {
+            Signature sig = Signature.getInstance("SHA256withRSA");
+            sig.initVerify(publicKey);
+            sig.update(data);
+            return sig.verify(signature);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    /**
+     * Execute the action after successful verification
+     */
+    private void executeVerifiedAction(Player player) {
+        // Implement your verified action logic here
+        player.sendMessage("Executing verified action...");
+    }
+}
+```
+
+## Signing Results
+
+The `AttestationSignResult` enum contains the following possible outcomes:
+
+- `SUCCESS` - Signing completed successfully, signed data is available
+- `SIGNING_NOT_ALLOWED` - The client has disabled signing in their settings
+- `SIGN_DATA_INVALID` - The verification data sent was invalid or corrupted
+- `USER_CANCELLED` - The user declined the signing request
+- `KEY_DOES_NOT_EXIST` - The client doesn't have a registered key (registration required first)
+- `UNKNOWN_ERROR` - An unexpected error occurred
+
+<Warning>
+  Only when the status is `SUCCESS` will the `getSignedData()` method return a non-null value.
+</Warning>
+
+## Use Cases
+
+Attestation signing is useful for:
+
+- **Transaction Verification** - Confirm high-value trades or purchases
+- **Permission Elevation** - Verify administrative actions
+- **Anti-Cheat** - Prove client-side compliance
+- **Authentication** - Verify user identity without passwords
+- **Audit Trails** - Create cryptographic proof of user actions
+
+## Best Practices
+
+<Tip>
+  Include timestamps in your verification data to prevent replay attacks.
+</Tip>
+
+<Tip>
+  Store pending verifications temporarily and clean them up after a timeout to prevent memory leaks.
+</Tip>
+
+<Warning>
+  Always verify the signature on the server side. Never trust client-provided verification results without cryptographic proof.
+</Warning>
+
+## Common Issues
+
+### KEY_DOES_NOT_EXIST Error
+
+This error occurs when the client hasn't completed registration. Always ensure players have registered before requesting signatures:
+
+```java
+if (!isRegistered(player.getUniqueId())) {
+    // Request registration first
+    requestRegistration(player);
+    return;
+}
+```
+
+### Signature Verification Fails
+
+If verification fails, check:
+
+1. You're using the correct public key for the player
+2. The original data matches exactly what was sent to the client
+3. The signature algorithm matches ("SHA256withRSA")
+
+## Next Steps
+
+- Learn about [player detection](/guides/player-detection) to identify Ember Client users
+- Explore [custom packets](/guides/custom-packets) to extend the API functionality

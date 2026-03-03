@@ -1,0 +1,264 @@
+---
+title: "Packet System"
+description: "Understanding the packet communication system between server and Ember Client"
+---
+
+## Overview
+
+The Ember Client Server API uses a packet-based communication system to exchange data between your Minecraft server and players using Ember Client. Packets are lightweight, serialized messages that travel over Minecraft's plugin messaging channels.
+
+## What Are Packets?
+
+Packets are structured data containers that encapsulate specific types of information. Each packet has:
+
+- A unique numeric ID for identification
+- A direction (inbound from client or outbound to client)
+- Serialization/deserialization logic
+- Optional handling logic when received
+
+## Packet Base Class
+
+All packets extend the abstract `Packet` class located at `com.emberclient.serverapi.packet.Packet`:
+
+```java Packet.java
+public abstract class Packet {
+    public void write(ByteBufWrapper buf) {
+        // Override to serialize packet data
+    }
+
+    public void read(ByteBufWrapper buf) {
+        // Override to deserialize packet data
+    }
+
+    public void handle(Player player) {
+        // Override to handle packet when received
+    }
+}
+```
+
+### Key Methods
+
+<ParamField path="write" type="void">
+  Serializes packet data into a `ByteBufWrapper` for transmission. Override this method in outbound packets to write your data.
+</ParamField>
+
+<ParamField path="read" type="void">
+  Deserializes packet data from a `ByteBufWrapper` after reception. Override this method in inbound packets to read data sent by the client.
+</ParamField>
+
+<ParamField path="handle" type="void">
+  Processes the packet after it has been read. This is where you trigger events or execute custom logic. Takes the `Player` who sent the packet as a parameter.
+</ParamField>
+
+## PacketManager
+
+The `PacketManager` class (`com.emberclient.serverapi.packet.PacketManager`) manages packet registration and routing:
+
+```java PacketManager.java
+public class PacketManager {
+    private final BiMap<Integer, Class<? extends Packet>> packets = HashBiMap.create();
+
+    public PacketManager() {
+        this.packets.put(1, OutAttestationRegister.class);
+        this.packets.put(1001, InAttestationRegister.class);
+
+        this.packets.put(2, OutAttestationSign.class);
+        this.packets.put(1002, InAttestationSign.class);
+    }
+}
+```
+
+### Packet Registration
+
+Packets are registered in the constructor with a bidirectional mapping between packet IDs and packet classes. This allows the manager to:
+
+1. **Serialize outbound packets** - Find the ID for a packet class when sending
+2. **Deserialize inbound packets** - Instantiate the correct packet class from an ID when receiving
+
+### Packet ID Convention
+
+<Info>
+  Outbound packets (server to client) use IDs 1-999, while inbound packets (client to server) use IDs 1000+.
+</Info>
+
+## Inbound vs Outbound Packets
+
+### Outbound Packets
+
+Outbound packets are sent **from the server to the client**. They implement the `write()` method to serialize data.
+
+**Example:** `OutAttestationSign` sends verification bytes to the client:
+
+```java OutAttestationSign.java
+public class OutAttestationSign extends Packet {
+    private byte[] verificationBytes;
+
+    public OutAttestationSign(byte[] verificationBytes) {
+        this.verificationBytes = verificationBytes;
+    }
+
+    @Override
+    public void write(ByteBufWrapper buf) {
+        buf.writeString(Base64.getEncoder().encodeToString(this.verificationBytes));
+    }
+}
+```
+
+### Inbound Packets
+
+Inbound packets are sent **from the client to the server**. They implement both `read()` and `handle()` methods.
+
+**Example:** `InAttestationSign` receives signed data from the client:
+
+```java InAttestationSign.java
+public class InAttestationSign extends Packet {
+    private AttestationSignResult status;
+    private byte[] signedData;
+
+    @Override
+    public void read(ByteBufWrapper buf) {
+        this.status = buf.readEnum(AttestationSignResult.class);
+
+        if (this.status.equals(AttestationSignResult.SUCCESS)) {
+            String encodedData = buf.readString();
+            this.signedData = Base64.getDecoder().decode(encodedData);
+        }
+    }
+
+    @Override
+    public void handle(Player player) {
+        Bukkit.getPluginManager().callEvent(
+            new EmberAttestationSignEvent(player, this.status, this.signedData)
+        );
+    }
+}
+```
+
+## ByteBufWrapper Serialization
+
+The `ByteBufWrapper` class provides utility methods for reading and writing various data types efficiently. It wraps Netty's `ByteBuf` with convenient serialization methods.
+
+### Common Methods
+
+<CodeGroup>
+```java Primitives
+// Write
+buf.writeBoolean(true);
+buf.writeInt(42);
+buf.writeLong(1000L);
+
+// Read
+boolean value = buf.readBoolean();
+int number = buf.readInt();
+long timestamp = buf.readLong();
+```
+
+```java Strings & UUIDs
+// Write
+buf.writeString("Hello");
+buf.writeUuid(playerUUID);
+
+// Read
+String message = buf.readString();
+UUID uuid = buf.readUuid();
+```
+
+```java Variable Length Integers
+// Write (more efficient for small numbers)
+buf.writeVarInt(100);
+buf.writeVarLong(50000L);
+
+// Read
+int count = buf.readVarInt();
+long value = buf.readVarLong();
+```
+
+```java Arrays & Collections
+// Write
+buf.writeByteArray(bytes);
+buf.writeVarIntArray(numbers);
+buf.writeCollection(list, ByteBuf::writeString);
+
+// Read
+byte[] data = buf.readByteArray();
+int[] numbers = buf.readVarIntArray();
+List<String> items = buf.readCollection(ArrayList::new, ByteBuf::readString);
+```
+
+```java Enums
+// Write
+buf.writeEnum(AttestationSignResult.SUCCESS);
+
+// Read
+AttestationSignResult result = buf.readEnum(AttestationSignResult.class);
+```
+</CodeGroup>
+
+### Advanced Features
+
+The `ByteBufWrapper` also supports:
+
+- **Optional values** - `writeOptional()` and `readOptional()`
+- **Maps** - `writeMap()` and `readMap()`
+- **Custom size limits** - Most read methods accept maximum size parameters for security
+
+See the full source at `com.emberclient.serverapi.ByteBufWrapper` for all available methods.
+
+## Available Packet Types
+
+The Server API currently includes these packet types:
+
+### Attestation Registration
+
+<CardGroup cols={2}>
+  <Card title="OutAttestationRegister" icon="arrow-right">
+    **ID:** 1 (Outbound)
+    
+    Requests the client to register a new attestation key. Has no data payload.
+  </Card>
+  
+  <Card title="InAttestationRegister" icon="arrow-left">
+    **ID:** 1001 (Inbound)
+    
+    Returns the registration result and public key (if successful) to the server.
+    
+    **Data:**
+    - `AttestationRegisterResult` status
+    - `X509EncodedKeySpec` publicKey (if SUCCESS)
+  </Card>
+</CardGroup>
+
+### Attestation Signing
+
+<CardGroup cols={2}>
+  <Card title="OutAttestationSign" icon="arrow-right">
+    **ID:** 2 (Outbound)
+    
+    Requests the client to sign verification bytes with their attestation key.
+    
+    **Data:**
+    - `byte[]` verificationBytes (Base64 encoded)
+  </Card>
+  
+  <Card title="InAttestationSign" icon="arrow-left">
+    **ID:** 1002 (Inbound)
+    
+    Returns the signing result and signed data (if successful) to the server.
+    
+    **Data:**
+    - `AttestationSignResult` status
+    - `byte[]` signedData (if SUCCESS, Base64 encoded)
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events" icon="bolt" href="/concepts/events">
+    Learn about the event system and how to listen to packet responses
+  </Card>
+  
+  <Card title="Attestation Guide" icon="shield-check" href="/guides/attestation-registration">
+    Implement attestation authentication in your plugin
+  </Card>
+</CardGroup>

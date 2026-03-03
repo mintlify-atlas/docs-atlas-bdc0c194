@@ -1,0 +1,412 @@
+---
+title: 'Packets'
+description: 'Packet classes for client-server communication'
+---
+
+## Overview
+
+Packets are the fundamental units of communication between the server and Ember client. Each packet extends the base `Packet` class and implements serialization and handling logic.
+
+## Base Packet Class
+
+```java
+public abstract class Packet
+```
+
+All packet classes extend this base class and can override its methods.
+
+### Methods
+
+#### write()
+
+Serializes packet data to a buffer for transmission.
+
+```java
+public void write(ByteBufWrapper buf)
+```
+
+<ParamField path="buf" type="ByteBufWrapper" required>
+  The buffer to write packet data to
+</ParamField>
+
+#### read()
+
+Deserializes packet data from a buffer.
+
+```java
+public void read(ByteBufWrapper buf)
+```
+
+<ParamField path="buf" type="ByteBufWrapper" required>
+  The buffer to read packet data from
+</ParamField>
+
+#### handle()
+
+Processes the packet after it has been received and deserialized.
+
+```java
+public void handle(Player player)
+```
+
+<ParamField path="player" type="Player" required>
+  The player associated with this packet
+</ParamField>
+
+## Outgoing Packets
+
+Packets sent from server to client.
+
+### OutAttestationRegister
+
+Requests the client to register an attestation key pair.
+
+**Packet ID:** 1
+
+```java
+public class OutAttestationRegister extends Packet
+```
+
+**Usage:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+api.sendPacket(player, new OutAttestationRegister());
+```
+
+<Note>
+  This packet has no fields. It simply signals the client to begin the attestation registration process.
+</Note>
+
+### OutAttestationSign
+
+Requests the client to sign data using their registered attestation key.
+
+**Packet ID:** 2
+
+```java
+public class OutAttestationSign extends Packet
+```
+
+#### Constructor
+
+```java
+public OutAttestationSign(byte[] verificationBytes)
+```
+
+<ParamField path="verificationBytes" type="byte[]" required>
+  The data to be signed by the client's attestation key
+</ParamField>
+
+#### write()
+
+```java
+@Override
+public void write(ByteBufWrapper buf)
+```
+
+Serializes the verification bytes as a Base64-encoded string.
+
+**Usage:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+byte[] dataToSign = "challenge_data".getBytes(StandardCharsets.UTF_8);
+api.sendPacket(player, new OutAttestationSign(dataToSign));
+```
+
+## Incoming Packets
+
+Packets received from client to server.
+
+### InAttestationRegister
+
+Response from the client after attempting to register an attestation key.
+
+**Packet ID:** 1001
+
+```java
+public class InAttestationRegister extends Packet
+```
+
+#### Fields
+
+<ResponseField name="status" type="AttestationRegisterResult">
+  The result of the registration attempt
+</ResponseField>
+
+<ResponseField name="publicKey" type="X509EncodedKeySpec">
+  The client's public key (only present if status is SUCCESS)
+</ResponseField>
+
+#### read()
+
+```java
+@Override
+public void read(ByteBufWrapper buf)
+```
+
+1. Reads the status enum
+2. If status is SUCCESS, reads the Base64-encoded public key string and decodes it into an X509EncodedKeySpec
+
+#### handle()
+
+```java
+@Override
+public void handle(Player player)
+```
+
+Fires an `EmberAttestationRegisterEvent` with the registration result.
+
+### InAttestationSign
+
+Response from the client after attempting to sign data.
+
+**Packet ID:** 1002
+
+```java
+public class InAttestationSign extends Packet
+```
+
+#### Fields
+
+<ResponseField name="status" type="AttestationSignResult">
+  The result of the signing attempt
+</ResponseField>
+
+<ResponseField name="signedData" type="byte[]">
+  The signed data (only present if status is SUCCESS)
+</ResponseField>
+
+#### read()
+
+```java
+@Override
+public void read(ByteBufWrapper buf)
+```
+
+1. Reads the status enum
+2. If status is SUCCESS, reads the Base64-encoded signed data string and decodes it into a byte array
+
+#### handle()
+
+```java
+@Override
+public void handle(Player player)
+```
+
+Fires an `EmberAttestationSignEvent` with the signing result.
+
+## Result Enums
+
+### AttestationRegisterResult
+
+Possible outcomes of an attestation registration request.
+
+```java
+public enum AttestationRegisterResult
+```
+
+<ResponseField name="SUCCESS" type="enum">
+  Registration completed successfully, public key is available
+</ResponseField>
+
+<ResponseField name="SIGNING_NOT_ALLOWED" type="enum">
+  The client's environment does not support attestation signing
+</ResponseField>
+
+<ResponseField name="USER_CANCELLED" type="enum">
+  The user cancelled the registration process
+</ResponseField>
+
+<ResponseField name="UNKNOWN_ERROR" type="enum">
+  An unexpected error occurred during registration
+</ResponseField>
+
+### AttestationSignResult
+
+Possible outcomes of an attestation signing request.
+
+```java
+public enum AttestationSignResult
+```
+
+<ResponseField name="SUCCESS" type="enum">
+  Signing completed successfully, signed data is available
+</ResponseField>
+
+<ResponseField name="SIGNING_NOT_ALLOWED" type="enum">
+  The client's environment does not support attestation signing
+</ResponseField>
+
+<ResponseField name="SIGN_DATA_INVALID" type="enum">
+  The provided data to sign was invalid
+</ResponseField>
+
+<ResponseField name="USER_CANCELLED" type="enum">
+  The user cancelled the signing process
+</ResponseField>
+
+<ResponseField name="KEY_DOES_NOT_EXIST" type="enum">
+  No attestation key has been registered yet
+</ResponseField>
+
+<ResponseField name="UNKNOWN_ERROR" type="enum">
+  An unexpected error occurred during signing
+</ResponseField>
+
+## ByteBufWrapper
+
+A wrapper around Netty's `ByteBuf` with convenience methods for reading and writing common data types.
+
+### Common Methods
+
+#### Variable-Length Integers
+
+```java
+public void writeVarInt(int value)
+public int readVarInt()
+
+public void writeVarLong(long value)
+public long readVarLong()
+```
+
+#### Strings
+
+```java
+public void writeString(String s)
+public String readString()
+
+public void writeString(String s, int allowedLength)
+public String readString(int expectedLength)
+```
+
+#### Enums
+
+```java
+public void writeEnum(Enum<?> e)
+public <T extends Enum<T>> T readEnum(Class<T> clazz)
+```
+
+#### Byte Arrays
+
+```java
+public void writeByteArray(byte[] array)
+public byte[] readByteArray()
+public byte[] readByteArray(int limit)
+```
+
+#### UUID
+
+```java
+public void writeUuid(UUID uuid)
+public UUID readUuid()
+```
+
+#### Collections
+
+```java
+public <T> void writeCollection(Collection<T> collection, BiConsumer<ByteBuf, T> entrySerializer)
+public <T, C extends Collection<T>> C readCollection(IntFunction<C> collectionFactory, Function<ByteBuf, T> entryParser)
+```
+
+#### Maps
+
+```java
+public <K, V> void writeMap(Map<K, V> map, BiConsumer<ByteBuf, K> keySerializer, BiConsumer<ByteBuf, V> valueSerializer)
+public <K, V, M extends Map<K, V>> M readMap(IntFunction<M> mapFactory, Function<ByteBuf, K> keyParser, Function<ByteBuf, V> valueParser)
+```
+
+#### Optional Values
+
+```java
+public <T> void writeOptional(@Nullable T object, BiConsumer<ByteBuf, T> entrySerializer)
+public <T> T readOptional(Function<ByteBuf, T> entryParser)
+```
+
+### Constants
+
+<ResponseField name="MAX_VAR_INT_LENGTH" type="int">
+  Maximum length of a VarInt: 5 bytes
+</ResponseField>
+
+<ResponseField name="MAX_VAR_LONG_LENGTH" type="int">
+  Maximum length of a VarLong: 10 bytes
+</ResponseField>
+
+<ResponseField name="DEFAULT_MAX_STRING_LENGTH" type="int">
+  Default maximum string length: 32767 characters
+</ResponseField>
+
+## Complete Example
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
+
+public class AttestationExample implements Listener {
+    
+    public void requestAttestation(Player player) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        // Request registration
+        api.sendPacket(player, new OutAttestationRegister());
+    }
+    
+    @EventHandler
+    public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+        if (event.getStatus() == AttestationRegisterResult.SUCCESS) {
+            Player player = event.getPlayer();
+            X509EncodedKeySpec publicKeySpec = event.getPublicKey();
+            
+            // Store the public key for later verification
+            // ...
+            
+            // Request signing of challenge data
+            byte[] challenge = "verify_player".getBytes(StandardCharsets.UTF_8);
+            ECServerAPI.getInstance().sendPacket(player, new OutAttestationSign(challenge));
+        }
+    }
+    
+    @EventHandler
+    public void onAttestationSign(EmberAttestationSignEvent event) {
+        if (event.getStatus() == AttestationSignResult.SUCCESS) {
+            Player player = event.getPlayer();
+            byte[] signedData = event.getSignedData();
+            
+            // Verify the signature with the stored public key
+            try {
+                X509EncodedKeySpec publicKeySpec = // ... retrieve stored key
+                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                PublicKey publicKey = keyFactory.generatePublic(publicKeySpec);
+                
+                Signature signature = Signature.getInstance("SHA256withRSA");
+                signature.initVerify(publicKey);
+                signature.update("verify_player".getBytes(StandardCharsets.UTF_8));
+                
+                if (signature.verify(signedData)) {
+                    player.sendMessage("Attestation verified!");
+                } else {
+                    player.sendMessage("Attestation verification failed!");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```

@@ -1,0 +1,261 @@
+---
+title: Attestation Registration
+description: Learn how to implement attestation registration to obtain a client's public key for cryptographic verification
+---
+
+Attestation registration is the first step in the attestation process. It allows your server to request and store a player's public key from Ember Client, which can later be used for cryptographic verification through signing.
+
+## What is Attestation Registration?
+
+Attestation registration prompts the Ember Client user to generate or provide their public key. This key is essential for:
+
+- Verifying the authenticity of signed data
+- Establishing trust between server and client
+- Enabling secure cryptographic operations
+
+The registration process involves sending a request packet to the client and listening for the response event containing the public key.
+
+## Implementation Steps
+
+<Steps>
+  <Step title="Send the registration request">
+    Create and send an `OutAttestationRegister` packet to the player to initiate the registration process.
+
+    ```java
+    import com.emberclient.serverapi.ECServerAPI;
+    import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+    import org.bukkit.entity.Player;
+
+    public void requestAttestation(Player player) {
+        // Check if the player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            player.sendMessage("You must be using Ember Client to use this feature.");
+            return;
+        }
+
+        // Send the registration packet
+        ECServerAPI.getInstance().sendPacket(player, new OutAttestationRegister());
+        player.sendMessage("Attestation registration requested. Please check your client.");
+    }
+    ```
+  </Step>
+
+  <Step title="Listen for the registration event">
+    Create an event listener to handle the `EmberAttestationRegisterEvent` that fires when the client responds.
+
+    ```java
+    import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+    import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+    import org.bukkit.event.EventHandler;
+    import org.bukkit.event.Listener;
+
+    public class AttestationListener implements Listener {
+        
+        @EventHandler
+        public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+            Player player = event.getPlayer();
+            AttestationRegisterResult status = event.getStatus();
+            
+            // Handle the registration result
+            switch (status) {
+                case SUCCESS:
+                    handleSuccessfulRegistration(player, event.getPublicKey());
+                    break;
+                case SIGNING_NOT_ALLOWED:
+                    player.sendMessage("Signing is not allowed on your client.");
+                    break;
+                case USER_CANCELLED:
+                    player.sendMessage("You cancelled the attestation registration.");
+                    break;
+                case UNKNOWN_ERROR:
+                    player.sendMessage("An unknown error occurred during registration.");
+                    break;
+            }
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Store the public key">
+    When registration is successful, store the player's public key for future verification operations.
+
+    ```java
+    import java.security.KeyFactory;
+    import java.security.PublicKey;
+    import java.security.spec.X509EncodedKeySpec;
+    import java.util.HashMap;
+    import java.util.Map;
+    import java.util.UUID;
+
+    public class PublicKeyStorage {
+        private static final Map<UUID, PublicKey> publicKeys = new HashMap<>();
+        
+        public static void storePublicKey(UUID playerId, X509EncodedKeySpec keySpec) {
+            try {
+                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                PublicKey publicKey = keyFactory.generatePublic(keySpec);
+                publicKeys.put(playerId, publicKey);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        
+        public static PublicKey getPublicKey(UUID playerId) {
+            return publicKeys.get(playerId);
+        }
+        
+        public static boolean hasPublicKey(UUID playerId) {
+            return publicKeys.containsKey(playerId);
+        }
+    }
+
+    private void handleSuccessfulRegistration(Player player, X509EncodedKeySpec publicKey) {
+        // Store the public key
+        PublicKeyStorage.storePublicKey(player.getUniqueId(), publicKey);
+        player.sendMessage("Attestation registration successful!");
+    }
+    ```
+  </Step>
+
+  <Step title="Register the listener">
+    Don't forget to register your event listener in your plugin's `onEnable()` method.
+
+    ```java
+    @Override
+    public void onEnable() {
+        getServer().getPluginManager().registerEvents(new AttestationListener(), this);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete working implementation that ties everything together:
+
+```java AttestationManager.java
+package com.example.plugin;
+
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class AttestationManager implements Listener {
+    private final Map<UUID, PublicKey> publicKeys = new HashMap<>();
+    
+    /**
+     * Request attestation registration from a player
+     */
+    public void requestRegistration(Player player) {
+        // Verify player is using Ember Client
+        if (!ECServerAPI.getInstance().isPlayerOnEmber(player.getUniqueId())) {
+            player.sendMessage("You must be using Ember Client to register.");
+            return;
+        }
+        
+        // Check if already registered
+        if (publicKeys.containsKey(player.getUniqueId())) {
+            player.sendMessage("You are already registered!");
+            return;
+        }
+        
+        // Send registration packet
+        ECServerAPI.getInstance().sendPacket(player, new OutAttestationRegister());
+        player.sendMessage("Please approve the attestation request in your client.");
+    }
+    
+    /**
+     * Handle attestation registration responses
+     */
+    @EventHandler
+    public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+        Player player = event.getPlayer();
+        AttestationRegisterResult status = event.getStatus();
+        
+        switch (status) {
+            case SUCCESS:
+                // Convert and store the public key
+                try {
+                    KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                    PublicKey publicKey = keyFactory.generatePublic(event.getPublicKey());
+                    publicKeys.put(player.getUniqueId(), publicKey);
+                    
+                    player.sendMessage("Attestation registration successful!");
+                    player.sendMessage("Your public key has been stored.");
+                } catch (Exception e) {
+                    player.sendMessage("Failed to process your public key.");
+                    e.printStackTrace();
+                }
+                break;
+                
+            case SIGNING_NOT_ALLOWED:
+                player.sendMessage("Signing is disabled in your Ember Client settings.");
+                break;
+                
+            case USER_CANCELLED:
+                player.sendMessage("You cancelled the attestation request.");
+                break;
+                
+            case UNKNOWN_ERROR:
+                player.sendMessage("An error occurred during registration. Please try again.");
+                break;
+        }
+    }
+    
+    /**
+     * Check if a player has registered their public key
+     */
+    public boolean isRegistered(UUID playerId) {
+        return publicKeys.containsKey(playerId);
+    }
+    
+    /**
+     * Get a player's public key
+     */
+    public PublicKey getPublicKey(UUID playerId) {
+        return publicKeys.get(playerId);
+    }
+}
+```
+
+## Registration Results
+
+The `AttestationRegisterResult` enum contains the following possible outcomes:
+
+- `SUCCESS` - Registration completed successfully, public key is available
+- `SIGNING_NOT_ALLOWED` - The client has disabled signing in their settings
+- `USER_CANCELLED` - The user declined the registration request
+- `UNKNOWN_ERROR` - An unexpected error occurred
+
+<Note>
+  Only when the status is `SUCCESS` will the `getPublicKey()` method return a non-null value.
+</Note>
+
+## Best Practices
+
+<Tip>
+  Always verify that a player is using Ember Client with `isPlayerOnEmber()` before sending attestation packets.
+</Tip>
+
+<Warning>
+  Store public keys securely and consider persisting them to a database for long-term use. The in-memory storage shown in these examples will be lost on server restart.
+</Warning>
+
+## Next Steps
+
+Once you have successfully registered and stored a player's public key, you can proceed to:
+
+- [Implement attestation signing](/guides/attestation-signing) to verify signed data
+- Use the stored keys for cryptographic verification
+- Build trust-based features requiring client authentication

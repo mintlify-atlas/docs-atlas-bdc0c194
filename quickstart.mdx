@@ -1,80 +1,275 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Start building with Ember Client Server API in minutes
 ---
 
-## Get started in three steps
+This guide will walk you through the essential features of the Server API using real code examples.
 
-Get your documentation site running locally and make your first customization.
+## Get the API Instance
 
-### Step 1: Set up your local environment
+The `ECServerAPI` class is the main entry point for all API functionality. Access it using the singleton pattern:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+```java
+import com.emberclient.serverapi.ECServerAPI;
 
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+ECServerAPI api = ECServerAPI.getInstance();
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+The API instance is available after the ECServerAPI plugin loads. If you declared it as a `softdepend` in your plugin.yml, it will be available in your `onEnable()` method.
 </Note>
+
+## Check if a Player is Using Ember Client
+
+Before sending packets or using Ember-specific features, verify that the player is using Ember Client:
+
+```java
+import org.bukkit.entity.Player;
+import java.util.UUID;
+
+Player player = // ... get player
+UUID uuid = player.getUniqueId();
+
+if (api.isPlayerOnEmber(uuid)) {
+    player.sendMessage("Welcome, Ember Client user!");
+} else {
+    player.sendMessage("You're using vanilla Minecraft.");
+}
+```
+
+<Tip>
+The `isPlayerOnEmber()` method is automatically updated when players join or leave, and when they register/unregister the plugin channel.
+</Tip>
+
+## Send a Packet to the Client
+
+Send custom packets to Ember Client users. Here's an example using the attestation register packet:
+
+```java
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+
+Player player = // ... get player
+
+// Only send to Ember Client users
+if (api.isPlayerOnEmber(player.getUniqueId())) {
+    OutAttestationRegister packet = new OutAttestationRegister();
+    api.sendPacket(player, packet);
+}
+```
+
+<CodeGroup>
+```java Send Attestation Register Request
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import org.bukkit.entity.Player;
+
+public void requestAttestation(Player player) {
+    ECServerAPI api = ECServerAPI.getInstance();
+    
+    if (!api.isPlayerOnEmber(player.getUniqueId())) {
+        player.sendMessage("You must use Ember Client for this feature.");
+        return;
+    }
+    
+    OutAttestationRegister packet = new OutAttestationRegister();
+    api.sendPacket(player, packet);
+    player.sendMessage("Please complete the attestation on your device.");
+}
+```
+
+```java Send Attestation Sign Request
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+import org.bukkit.entity.Player;
+
+public void requestSignature(Player player) {
+    ECServerAPI api = ECServerAPI.getInstance();
+    
+    if (!api.isPlayerOnEmber(player.getUniqueId())) {
+        player.sendMessage("Attestation requires Ember Client.");
+        return;
+    }
+    
+    OutAttestationSign packet = new OutAttestationSign();
+    api.sendPacket(player, packet);
+}
+```
+</CodeGroup>
+
+<Warning>
+The `sendPacket()` method automatically checks if the player is using Ember Client and silently returns if they're not. Always verify beforehand if you need to provide user feedback.
+</Warning>
+
+## Listen to Events
+
+The API fires Bukkit events that you can listen to. Here are the most common events:
+
+### Detect When a Player Joins with Ember Client
+
+```java
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+public class EmberListener implements Listener {
+    
+    @EventHandler
+    public void onEmberPlayerJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        player.sendMessage("Ember Client detected! Special features enabled.");
+        
+        // Grant permissions, show custom UI, etc.
+    }
+}
+```
+
+### Handle Attestation Registration
+
+```java
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.security.spec.X509EncodedKeySpec;
+
+public class AttestationListener implements Listener {
+    
+    @EventHandler
+    public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+        Player player = event.getPlayer();
+        AttestationRegisterResult status = event.getStatus();
+        X509EncodedKeySpec publicKey = event.getPublicKey();
+        
+        if (status == AttestationRegisterResult.SUCCESS) {
+            // Store the public key for this player
+            // You can now use it for signature verification
+            player.sendMessage("2FA setup complete!");
+        } else {
+            player.sendMessage("2FA setup failed. Please try again.");
+        }
+    }
+}
+```
+
+### Handle Attestation Signatures
+
+```java
+import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+public class SignatureListener implements Listener {
+    
+    @EventHandler
+    public void onAttestationSign(EmberAttestationSignEvent event) {
+        Player player = event.getPlayer();
+        AttestationSignResult status = event.getStatus();
+        byte[] signedData = event.getSignedData();
+        
+        if (status == AttestationSignResult.SUCCESS) {
+            // Verify the signature using stored public key
+            // Grant access to protected resources
+            player.sendMessage("Authentication successful!");
+        } else {
+            player.sendMessage("Authentication failed.");
+        }
+    }
+}
+```
+
+### Register Your Event Listener
+
+Don't forget to register your listener in your plugin's `onEnable()` method:
+
+```java
+public class YourPlugin extends JavaPlugin {
+    
+    @Override
+    public void onEnable() {
+        getServer().getPluginManager().registerEvents(new EmberListener(), this);
+        getServer().getPluginManager().registerEvents(new AttestationListener(), this);
+        getServer().getPluginManager().registerEvents(new SignatureListener(), this);
+    }
+}
+```
+
+## Complete Example
+
+Here's a complete example that ties everything together:
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class EmberIntegration extends JavaPlugin implements Listener {
+    
+    @Override
+    public void onEnable() {
+        getServer().getPluginManager().registerEvents(this, this);
+    }
+    
+    @EventHandler
+    public void onEmberJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        player.sendMessage("Welcome! Type /setup2fa to enable two-factor authentication.");
+    }
+    
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage("This command is for players only.");
+            return true;
+        }
+        
+        Player player = (Player) sender;
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        if (command.getName().equalsIgnoreCase("setup2fa")) {
+            if (!api.isPlayerOnEmber(player.getUniqueId())) {
+                player.sendMessage("You must use Ember Client for 2FA.");
+                return true;
+            }
+            
+            OutAttestationRegister packet = new OutAttestationRegister();
+            api.sendPacket(player, packet);
+            player.sendMessage("Please complete 2FA setup on your device.");
+            return true;
+        }
+        
+        return false;
+    }
+    
+    @EventHandler
+    public void onRegister(EmberAttestationRegisterEvent event) {
+        Player player = event.getPlayer();
+        
+        if (event.getStatus() == AttestationRegisterResult.SUCCESS) {
+            // In production, store event.getPublicKey() in your database
+            player.sendMessage("2FA enabled! Your account is now protected.");
+        }
+    }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/packets">
+    Deep dive into packets, events, and the API architecture
+  </Card>
+  
+  <Card title="Attestation Guide" icon="shield-check" href="/guides/attestation-registration">
+    Build a complete 2FA system with attestation
+  </Card>
+</CardGroup>

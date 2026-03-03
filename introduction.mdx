@@ -1,0 +1,71 @@
+---
+title: Introduction
+description: Welcome to Ember Client Server API - A powerful Java library for Minecraft servers to interact with Ember Client
+---
+
+## What is Ember Client Server API?
+
+Ember Client Server API is a Java library that enables Minecraft server developers to interact with players using Ember Client. Built as a Bukkit/Spigot plugin, it provides a robust event-driven API for custom packet communication and player detection.
+
+The API bridges the gap between your Minecraft server and Ember Client, allowing you to build enhanced security features, custom gameplay mechanics, and client-specific functionality.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Attestation-Based 2FA" icon="shield-check">
+    Industry-standard WebAuthn authentication for exceptional server security. More user-friendly than TOTP while providing stronger protection against unauthorized access.
+  </Card>
+  
+  <Card title="Player Detection" icon="user-check">
+    Automatically detect when players connect using Ember Client. Build features that work seamlessly with both Ember and vanilla clients.
+  </Card>
+  
+  <Card title="Custom Packet Communication" icon="network-wired">
+    Send and receive custom packets between your server and Ember Client. Build entirely new features that extend beyond vanilla Minecraft capabilities.
+  </Card>
+  
+  <Card title="Event-Driven API" icon="bolt">
+    React to client events in real-time using Bukkit's familiar event system. Handle player joins, attestation registration, and custom packet responses.
+  </Card>
+</CardGroup>
+
+## Why Use Ember Client Server API?
+
+### Enhanced Security
+Implement hardware-based two-factor authentication using WebAuthn attestation. Unlike traditional TOTP methods, attestation uses cryptographic keys stored in secure hardware, providing superior protection against account takeovers.
+
+### Seamless Integration
+Built on top of Bukkit/Spigot's plugin architecture, the API follows familiar Java patterns. If you've developed Minecraft plugins before, you'll feel right at home.
+
+### Flexible Architecture
+The packet-based communication system allows you to extend your server's functionality without client modifications. Send custom data, trigger client-side events, and build features that vanilla Minecraft can't support.
+
+## Getting Started
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add the API to your project and configure your plugin
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first integration in minutes
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/concepts/packets">
+    Understand packets, events, and the API architecture
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+- **Two-Factor Authentication**: Require hardware-backed authentication for administrative actions or high-value transactions
+- **Client Detection**: Show special features or information only to Ember Client users
+- **Anti-Cheat Integration**: Leverage attestation to verify client authenticity
+- **Custom Features**: Build gameplay mechanics that communicate directly with the client
+- **Server Security**: Add an extra layer of protection for sensitive operations
+
+## Requirements
+
+- Java 8 or higher
+- Bukkit/Spigot 1.8.8 or compatible version
+- Ember Client Server API plugin installed on your server

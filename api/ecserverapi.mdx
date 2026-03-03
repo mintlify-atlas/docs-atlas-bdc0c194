@@ -1,0 +1,160 @@
+---
+title: 'ECServerAPI'
+description: 'Main API class for interacting with Ember Client Server'
+---
+
+## Overview
+
+`ECServerAPI` is the primary entry point for the Ember Client Server API. It extends `JavaPlugin` and provides methods to send packets to players using the Ember client and check their connection status.
+
+## Class Definition
+
+```java
+public final class ECServerAPI extends JavaPlugin
+```
+
+## Getting the Instance
+
+### getInstance()
+
+Returns the singleton instance of the API.
+
+```java
+public static ECServerAPI getInstance()
+```
+
+<ResponseField name="return" type="ECServerAPI">
+  The singleton instance of ECServerAPI
+</ResponseField>
+
+**Example:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+```
+
+## Constants
+
+### CHANNEL_NAME
+
+The plugin messaging channel name used for communication.
+
+```java
+public static final String CHANNEL_NAME = "ember:data"
+```
+
+<ResponseField name="CHANNEL_NAME" type="String">
+  The channel identifier: `"ember:data"`
+</ResponseField>
+
+## Methods
+
+### sendPacket()
+
+Sends a packet to a player if they are connected using the Ember client.
+
+```java
+public void sendPacket(Player player, Packet packet)
+```
+
+<ParamField path="player" type="Player" required>
+  The Bukkit player to send the packet to
+</ParamField>
+
+<ParamField path="packet" type="Packet" required>
+  The packet to send
+</ParamField>
+
+**Example:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+Player player = // ... get player
+
+// Request attestation registration
+api.sendPacket(player, new OutAttestationRegister());
+```
+
+<Note>
+  This method automatically checks if the player is using the Ember client. If they are not, the packet is silently ignored.
+</Note>
+
+### isPlayerOnEmber()
+
+Checks whether a player is connected using the Ember client.
+
+```java
+public boolean isPlayerOnEmber(UUID uuid)
+```
+
+<ParamField path="uuid" type="UUID" required>
+  The unique identifier of the player to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the player is using Ember client, `false` otherwise
+</ResponseField>
+
+**Example:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+Player player = // ... get player
+
+if (api.isPlayerOnEmber(player.getUniqueId())) {
+    // Player is using Ember client
+    api.sendPacket(player, new OutAttestationRegister());
+} else {
+    // Player is using vanilla client
+    player.sendMessage("You need the Ember client to use this feature.");
+}
+```
+
+### getPacketManager()
+
+Returns the packet manager for advanced packet handling.
+
+```java
+public PacketManager getPacketManager()
+```
+
+<ResponseField name="return" type="PacketManager">
+  The PacketManager instance handling packet serialization and registration
+</ResponseField>
+
+**Example:**
+
+```java
+ECServerAPI api = ECServerAPI.getInstance();
+PacketManager packetManager = api.getPacketManager();
+```
+
+<Note>
+  Most users will not need to interact with the PacketManager directly. Use `sendPacket()` for sending packets.
+</Note>
+
+## Complete Example
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+
+public class MyPlugin implements Listener {
+    
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        ECServerAPI api = ECServerAPI.getInstance();
+        
+        // Check if player is using Ember
+        if (api.isPlayerOnEmber(player.getUniqueId())) {
+            // Request attestation registration
+            api.sendPacket(player, new OutAttestationRegister());
+        }
+    }
+}
+```

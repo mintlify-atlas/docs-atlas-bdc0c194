@@ -1,0 +1,415 @@
+---
+title: 'Events'
+description: 'Bukkit events fired by the Ember Client Server API'
+---
+
+## Overview
+
+The Ember Client Server API fires custom Bukkit events that you can listen to in your plugins. All events extend Bukkit's `PlayerEvent` class.
+
+## Event Classes
+
+### EmberPlayerJoinEvent
+
+Fired when a player joins the server using the Ember client.
+
+```java
+public class EmberPlayerJoinEvent extends PlayerEvent
+```
+
+#### Constructor
+
+```java
+public EmberPlayerJoinEvent(Player player)
+```
+
+<ParamField path="player" type="Player" required>
+  The player who joined using Ember client
+</ParamField>
+
+#### Methods
+
+##### getPlayer()
+
+Returns the player who joined (inherited from `PlayerEvent`).
+
+```java
+public Player getPlayer()
+```
+
+<ResponseField name="return" type="Player">
+  The player who joined using the Ember client
+</ResponseField>
+
+#### Example
+
+```java
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+public class MyListener implements Listener {
+    
+    @EventHandler
+    public void onEmberPlayerJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        player.sendMessage("Welcome, Ember user!");
+        
+        // You can now safely send Ember-specific packets
+    }
+}
+```
+
+<Note>
+  This event is fired after the player has been registered as an Ember client user. You can safely use `ECServerAPI.sendPacket()` for this player.
+</Note>
+
+---
+
+### EmberAttestationRegisterEvent
+
+Fired when the client responds to an attestation registration request.
+
+```java
+public class EmberAttestationRegisterEvent extends PlayerEvent
+```
+
+#### Constructor
+
+```java
+public EmberAttestationRegisterEvent(
+    Player player,
+    AttestationRegisterResult status,
+    X509EncodedKeySpec publicKey
+)
+```
+
+<ParamField path="player" type="Player" required>
+  The player who responded to the registration request
+</ParamField>
+
+<ParamField path="status" type="AttestationRegisterResult" required>
+  The result of the registration attempt
+</ParamField>
+
+<ParamField path="publicKey" type="X509EncodedKeySpec">
+  The client's public key (only present if status is SUCCESS)
+</ParamField>
+
+#### Methods
+
+##### getPlayer()
+
+```java
+public Player getPlayer()
+```
+
+<ResponseField name="return" type="Player">
+  The player associated with this event
+</ResponseField>
+
+##### getStatus()
+
+```java
+public AttestationRegisterResult getStatus()
+```
+
+<ResponseField name="return" type="AttestationRegisterResult">
+  The result status of the registration attempt
+</ResponseField>
+
+Possible values:
+- `SUCCESS` - Registration completed successfully
+- `SIGNING_NOT_ALLOWED` - Client environment doesn't support attestation
+- `USER_CANCELLED` - User cancelled the registration
+- `UNKNOWN_ERROR` - An unexpected error occurred
+
+##### getPublicKey()
+
+```java
+public X509EncodedKeySpec getPublicKey()
+```
+
+<ResponseField name="return" type="X509EncodedKeySpec">
+  The client's public key in X.509 format, or `null` if registration failed
+</ResponseField>
+
+#### Example
+
+```java
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class AttestationListener implements Listener {
+    
+    private final Map<UUID, PublicKey> playerKeys = new HashMap<>();
+    
+    @EventHandler
+    public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+        Player player = event.getPlayer();
+        AttestationRegisterResult status = event.getStatus();
+        
+        if (status == AttestationRegisterResult.SUCCESS) {
+            X509EncodedKeySpec keySpec = event.getPublicKey();
+            
+            try {
+                // Convert to PublicKey object
+                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                PublicKey publicKey = keyFactory.generatePublic(keySpec);
+                
+                // Store for later use
+                playerKeys.put(player.getUniqueId(), publicKey);
+                
+                player.sendMessage("Attestation key registered successfully!");
+            } catch (Exception e) {
+                player.sendMessage("Failed to process attestation key.");
+                e.printStackTrace();
+            }
+        } else {
+            player.sendMessage("Attestation registration failed: " + status);
+        }
+    }
+}
+```
+
+---
+
+### EmberAttestationSignEvent
+
+Fired when the client responds to an attestation signing request.
+
+```java
+public class EmberAttestationSignEvent extends PlayerEvent
+```
+
+#### Constructor
+
+```java
+public EmberAttestationSignEvent(
+    Player player,
+    AttestationSignResult status,
+    byte[] signedData
+)
+```
+
+<ParamField path="player" type="Player" required>
+  The player who responded to the signing request
+</ParamField>
+
+<ParamField path="status" type="AttestationSignResult" required>
+  The result of the signing attempt
+</ParamField>
+
+<ParamField path="signedData" type="byte[]">
+  The signed data (only present if status is SUCCESS)
+</ParamField>
+
+#### Methods
+
+##### getPlayer()
+
+```java
+public Player getPlayer()
+```
+
+<ResponseField name="return" type="Player">
+  The player associated with this event
+</ResponseField>
+
+##### getStatus()
+
+```java
+public AttestationSignResult getStatus()
+```
+
+<ResponseField name="return" type="AttestationSignResult">
+  The result status of the signing attempt
+</ResponseField>
+
+Possible values:
+- `SUCCESS` - Signing completed successfully
+- `SIGNING_NOT_ALLOWED` - Client environment doesn't support attestation
+- `SIGN_DATA_INVALID` - The provided data was invalid
+- `USER_CANCELLED` - User cancelled the signing process
+- `KEY_DOES_NOT_EXIST` - No attestation key has been registered
+- `UNKNOWN_ERROR` - An unexpected error occurred
+
+##### getSignedData()
+
+```java
+public byte[] getSignedData()
+```
+
+<ResponseField name="return" type="byte[]">
+  The cryptographically signed data, or `null` if signing failed
+</ResponseField>
+
+#### Example
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+
+import java.nio.charset.StandardCharsets;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.util.Map;
+import java.util.UUID;
+
+public class SignatureVerifier implements Listener {
+    
+    private final Map<UUID, PublicKey> playerKeys; // From registration
+    private final byte[] challengeData = "verify_me".getBytes(StandardCharsets.UTF_8);
+    
+    public void requestSignature(Player player) {
+        ECServerAPI api = ECServerAPI.getInstance();
+        api.sendPacket(player, new OutAttestationSign(challengeData));
+    }
+    
+    @EventHandler
+    public void onAttestationSign(EmberAttestationSignEvent event) {
+        Player player = event.getPlayer();
+        AttestationSignResult status = event.getStatus();
+        
+        if (status == AttestationSignResult.SUCCESS) {
+            byte[] signedData = event.getSignedData();
+            PublicKey publicKey = playerKeys.get(player.getUniqueId());
+            
+            if (publicKey == null) {
+                player.sendMessage("No public key found. Please register first.");
+                return;
+            }
+            
+            try {
+                // Verify the signature
+                Signature signature = Signature.getInstance("SHA256withRSA");
+                signature.initVerify(publicKey);
+                signature.update(challengeData);
+                
+                if (signature.verify(signedData)) {
+                    player.sendMessage("Signature verified! You are authenticated.");
+                    // Grant access to protected features
+                } else {
+                    player.sendMessage("Signature verification failed!");
+                    player.kickPlayer("Authentication failed");
+                }
+            } catch (Exception e) {
+                player.sendMessage("Error verifying signature.");
+                e.printStackTrace();
+            }
+        } else if (status == AttestationSignResult.KEY_DOES_NOT_EXIST) {
+            player.sendMessage("Please register an attestation key first.");
+        } else {
+            player.sendMessage("Signing failed: " + status);
+        }
+    }
+}
+```
+
+## Complete Workflow Example
+
+```java
+import com.emberclient.serverapi.ECServerAPI;
+import com.emberclient.serverapi.event.EmberAttestationRegisterEvent;
+import com.emberclient.serverapi.event.EmberAttestationSignEvent;
+import com.emberclient.serverapi.event.EmberPlayerJoinEvent;
+import com.emberclient.serverapi.packet.impl.attestation.register.AttestationRegisterResult;
+import com.emberclient.serverapi.packet.impl.attestation.register.OutAttestationRegister;
+import com.emberclient.serverapi.packet.impl.attestation.sign.AttestationSignResult;
+import com.emberclient.serverapi.packet.impl.attestation.sign.OutAttestationSign;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.nio.charset.StandardCharsets;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class AttestationPlugin extends JavaPlugin implements Listener {
+    
+    private final Map<UUID, PublicKey> registeredKeys = new HashMap<>();
+    private final byte[] CHALLENGE = "server_challenge".getBytes(StandardCharsets.UTF_8);
+    
+    @Override
+    public void onEnable() {
+        getServer().getPluginManager().registerEvents(this, this);
+    }
+    
+    @EventHandler
+    public void onEmberJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        
+        // Request attestation registration from Ember client
+        ECServerAPI.getInstance().sendPacket(player, new OutAttestationRegister());
+    }
+    
+    @EventHandler
+    public void onRegister(EmberAttestationRegisterEvent event) {
+        if (event.getStatus() == AttestationRegisterResult.SUCCESS) {
+            Player player = event.getPlayer();
+            
+            try {
+                // Store the public key
+                KeyFactory kf = KeyFactory.getInstance("RSA");
+                PublicKey key = kf.generatePublic(event.getPublicKey());
+                registeredKeys.put(player.getUniqueId(), key);
+                
+                // Request signature of challenge
+                ECServerAPI.getInstance().sendPacket(player, new OutAttestationSign(CHALLENGE));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    
+    @EventHandler
+    public void onSign(EmberAttestationSignEvent event) {
+        if (event.getStatus() == AttestationSignResult.SUCCESS) {
+            Player player = event.getPlayer();
+            PublicKey key = registeredKeys.get(player.getUniqueId());
+            
+            try {
+                // Verify signature
+                Signature sig = Signature.getInstance("SHA256withRSA");
+                sig.initVerify(key);
+                sig.update(CHALLENGE);
+                
+                if (sig.verify(event.getSignedData())) {
+                    player.sendMessage("You have been verified as an authentic Ember user!");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+
+<Info>
+  Remember to register your event listener in your plugin's `onEnable()` method:
+  ```java
+  getServer().getPluginManager().registerEvents(new MyListener(), this);
+  ```
+</Info>

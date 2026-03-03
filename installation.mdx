@@ -1,0 +1,119 @@
+---
+title: Installation
+description: Add Ember Client Server API to your Minecraft server plugin
+---
+
+## Prerequisites
+
+Before integrating the Server API into your plugin, ensure you have:
+
+- Java 8 or higher installed
+- A Bukkit/Spigot server (1.8.8 or compatible)
+- Maven or Gradle for dependency management
+- The Ember Client Server API plugin installed on your server
+
+<Warning>
+You must install the Ember Client Server API plugin on your server before your plugin can interact with it. Download the latest version from the [Releases](https://github.com/EmberClient/ServerAPI/releases) page and place it in your plugins folder.
+</Warning>
+
+## Add Maven Repository
+
+<Steps>
+  <Step title="Add the Ember Client Maven repository">
+    Add the following repository to your `pom.xml`:
+
+    ```xml pom.xml
+    <repository>
+       <id>emberclient-releases</id>
+       <name>Ember Client</name>
+       <url>https://repo.emberclient.net/releases</url>
+    </repository>
+    ```
+
+    For Gradle users, add to your `build.gradle`:
+
+    ```gradle build.gradle
+    repositories {
+        maven {
+            name = "emberclient-releases"
+            url = "https://repo.emberclient.net/releases"
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Add the Server API dependency">
+    Add the dependency to your `pom.xml`:
+
+    ```xml pom.xml
+    <dependency>
+       <groupId>com.emberclient</groupId>
+       <artifactId>ServerAPI</artifactId>
+       <version>1.0</version>
+    </dependency>
+    ```
+
+    For Gradle users:
+
+    ```gradle build.gradle
+    dependencies {
+        compileOnly 'com.emberclient:ServerAPI:1.0'
+    }
+    ```
+
+    <Note>
+    Use `compileOnly` (Gradle) or `provided` scope (Maven) since the Server API plugin will be available at runtime on your server.
+    </Note>
+  </Step>
+
+  <Step title="Add softdepend to plugin.yml">
+    Declare the Server API as a soft dependency so your plugin loads after it:
+
+    ```yaml plugin.yml
+    name: YourPlugin
+    version: 1.0
+    main: com.yourpackage.YourPlugin
+    softdepend: [ECServerAPI]
+    ```
+
+    <Tip>
+    Using `softdepend` instead of `depend` allows your plugin to load even if Ember Client Server API is not installed, so you can gracefully handle its absence.
+    </Tip>
+  </Step>
+
+  <Step title="Verify installation">
+    Rebuild your project and verify that the dependency is available:
+
+    ```java
+    import com.emberclient.serverapi.ECServerAPI;
+
+    public class YourPlugin extends JavaPlugin {
+        @Override
+        public void onEnable() {
+            ECServerAPI api = ECServerAPI.getInstance();
+            if (api != null) {
+                getLogger().info("Ember Client Server API connected!");
+            } else {
+                getLogger().warning("Ember Client Server API not found");
+            }
+        }
+    }
+    ```
+
+    If the API is properly installed, you should see the success message when your plugin loads.
+  </Step>
+</Steps>
+
+## Next Steps
+
+Now that you've installed the API, you're ready to start building:
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first integration with code examples
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/concepts/packets">
+    Learn about packets, events, and the API architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,391 @@
+---
+title: "Event System"
+description: "Understanding Bukkit events fired by Ember Client Server API"
+---
+
+## Overview
+
+The Ember Client Server API uses Bukkit's event-driven architecture to notify your plugin when important actions occur. All events are fired asynchronously when the server receives responses from Ember Client.
+
+## Bukkit Event Architecture
+
+The API leverages Bukkit's standard event system, which means:
+
+- Events extend `PlayerEvent` (they're associated with a specific player)
+- You listen to events using `@EventHandler` annotations
+- Events are called through Bukkit's `PluginManager`
+- You can set event priorities and control cancellation (where applicable)
+
+### Listening to Events
+
+To listen to Ember Client events, create a listener class and register it with Bukkit:
+
+<CodeGroup>
+```java Listener Class
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import com.emberclient.serverapi.event.*;
+
+public class EmberListener implements Listener {
+    
+    @EventHandler
+    public void onEmberPlayerJoin(EmberPlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        // Handle player joining with Ember Client
+    }
+    
+    @EventHandler
+    public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+        Player player = event.getPlayer();
+        AttestationRegisterResult status = event.getStatus();
+        // Handle attestation registration
+    }
+}
+```
+
+```java Register Listener
+import org.bukkit.plugin.java.JavaPlugin;
+
+public class MyPlugin extends JavaPlugin {
+    
+    @Override
+    public void onEnable() {
+        // Register the listener
+        getServer().getPluginManager().registerEvents(
+            new EmberListener(), 
+            this
+        );
+    }
+}
+```
+</CodeGroup>
+
+## Available Events
+
+The Server API provides three events that correspond to different client interactions:
+
+### EmberPlayerJoinEvent
+
+**Package:** `com.emberclient.serverapi.event.EmberPlayerJoinEvent`
+
+Fired when a player joins the server using Ember Client.
+
+```java EmberPlayerJoinEvent.java
+public class EmberPlayerJoinEvent extends PlayerEvent {
+    public EmberPlayerJoinEvent(Player player) {
+        super(player);
+    }
+}
+```
+
+#### Available Methods
+
+<ParamField path="getPlayer()" type="Player">
+  Returns the player who joined with Ember Client.
+</ParamField>
+
+#### Example Usage
+
+```java
+@EventHandler
+public void onEmberPlayerJoin(EmberPlayerJoinEvent event) {
+    Player player = event.getPlayer();
+    
+    player.sendMessage("Welcome! You're using Ember Client.");
+    
+    // Grant special permissions for Ember Client users
+    player.addAttachment(plugin, "ember.user", true);
+    
+    // Log the join
+    getLogger().info(player.getName() + " joined with Ember Client");
+}
+```
+
+<Tip>
+  Use this event to detect Ember Client users and provide enhanced features, special permissions, or customized experiences.
+</Tip>
+
+### EmberAttestationRegisterEvent
+
+**Package:** `com.emberclient.serverapi.event.EmberAttestationRegisterEvent`
+
+Fired when a player completes (or fails) an attestation key registration request.
+
+```java EmberAttestationRegisterEvent.java
+public class EmberAttestationRegisterEvent extends PlayerEvent {
+    @Getter
+    private AttestationRegisterResult status;
+    
+    @Getter
+    private X509EncodedKeySpec publicKey;
+    
+    public EmberAttestationRegisterEvent(
+        Player player, 
+        AttestationRegisterResult status, 
+        X509EncodedKeySpec publicKey
+    ) {
+        super(player);
+        this.status = status;
+        this.publicKey = publicKey;
+    }
+}
+```
+
+#### Available Methods
+
+<ParamField path="getPlayer()" type="Player">
+  Returns the player attempting to register an attestation key.
+</ParamField>
+
+<ParamField path="getStatus()" type="AttestationRegisterResult">
+  Returns the registration result status. Possible values:
+  - `SUCCESS` - Key registered successfully
+  - `SIGNING_NOT_ALLOWED` - Device doesn't support attestation
+  - `USER_CANCELLED` - User cancelled the registration
+  - `UNKNOWN_ERROR` - An unexpected error occurred
+</ParamField>
+
+<ParamField path="getPublicKey()" type="X509EncodedKeySpec">
+  Returns the public key if registration was successful, `null` otherwise. Store this key to verify future signatures.
+</ParamField>
+
+#### Example Usage
+
+```java
+@EventHandler
+public void onAttestationRegister(EmberAttestationRegisterEvent event) {
+    Player player = event.getPlayer();
+    AttestationRegisterResult status = event.getStatus();
+    
+    if (status == AttestationRegisterResult.SUCCESS) {
+        X509EncodedKeySpec publicKey = event.getPublicKey();
+        
+        // Store the public key in your database
+        database.storePublicKey(player.getUniqueId(), publicKey.getEncoded());
+        
+        player.sendMessage("§aAttestation key registered successfully!");
+        player.sendMessage("§aYou can now use 2FA to protect your account.");
+        
+    } else if (status == AttestationRegisterResult.USER_CANCELLED) {
+        player.sendMessage("§cAttestation registration cancelled.");
+        
+    } else if (status == AttestationRegisterResult.SIGNING_NOT_ALLOWED) {
+        player.sendMessage("§cYour device doesn't support attestation.");
+        player.sendMessage("§cPlease use TOTP-based 2FA instead.");
+        
+    } else {
+        player.sendMessage("§cAn error occurred during registration.");
+        getLogger().warning("Attestation registration failed for " + 
+            player.getName() + ": " + status);
+    }
+}
+```
+
+### EmberAttestationSignEvent
+
+**Package:** `com.emberclient.serverapi.event.EmberAttestationSignEvent`
+
+Fired when a player completes (or fails) an attestation signing request.
+
+```java EmberAttestationSignEvent.java
+public class EmberAttestationSignEvent extends PlayerEvent {
+    @Getter
+    private AttestationSignResult status;
+    
+    @Getter
+    private byte[] signedData;
+    
+    public EmberAttestationSignEvent(
+        Player player, 
+        AttestationSignResult status, 
+        byte[] signedData
+    ) {
+        super(player);
+        this.status = status;
+        this.signedData = signedData;
+    }
+}
+```
+
+#### Available Methods
+
+<ParamField path="getPlayer()" type="Player">
+  Returns the player attempting to sign data.
+</ParamField>
+
+<ParamField path="getStatus()" type="AttestationSignResult">
+  Returns the signing result status. Possible values:
+  - `SUCCESS` - Data signed successfully
+  - `SIGNING_NOT_ALLOWED` - Device doesn't support attestation
+  - `SIGN_DATA_INVALID` - The verification data was invalid
+  - `USER_CANCELLED` - User cancelled the signing
+  - `KEY_DOES_NOT_EXIST` - No attestation key registered
+  - `UNKNOWN_ERROR` - An unexpected error occurred
+</ParamField>
+
+<ParamField path="getSignedData()" type="byte[]">
+  Returns the signed data if signing was successful, `null` otherwise. Verify this signature against the stored public key.
+</ParamField>
+
+#### Example Usage
+
+```java
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
+
+@EventHandler
+public void onAttestationSign(EmberAttestationSignEvent event) {
+    Player player = event.getPlayer();
+    AttestationSignResult status = event.getStatus();
+    
+    if (status == AttestationSignResult.SUCCESS) {
+        byte[] signedData = event.getSignedData();
+        byte[] originalData = pendingVerifications.get(player.getUniqueId());
+        
+        // Retrieve stored public key
+        byte[] publicKeyBytes = database.getPublicKey(player.getUniqueId());
+        
+        try {
+            // Verify the signature
+            KeyFactory keyFactory = KeyFactory.getInstance("EC");
+            PublicKey publicKey = keyFactory.generatePublic(
+                new X509EncodedKeySpec(publicKeyBytes)
+            );
+            
+            Signature signature = Signature.getInstance("SHA256withECDSA");
+            signature.initVerify(publicKey);
+            signature.update(originalData);
+            
+            if (signature.verify(signedData)) {
+                player.sendMessage("§aAuthentication successful!");
+                authenticatedPlayers.add(player.getUniqueId());
+                // Grant access to protected features
+            } else {
+                player.sendMessage("§cSignature verification failed!");
+                player.kickPlayer("Invalid attestation signature");
+            }
+            
+        } catch (Exception e) {
+            getLogger().severe("Failed to verify signature: " + e.getMessage());
+            player.sendMessage("§cVerification error occurred.");
+        }
+        
+    } else if (status == AttestationSignResult.KEY_DOES_NOT_EXIST) {
+        player.sendMessage("§cYou haven't registered an attestation key yet.");
+        player.sendMessage("§cUse /2fa register to set up 2FA.");
+        
+    } else if (status == AttestationSignResult.USER_CANCELLED) {
+        player.sendMessage("§cAuthentication cancelled.");
+        
+    } else {
+        player.sendMessage("§cAuthentication failed: " + status);
+    }
+    
+    // Clean up pending verification
+    pendingVerifications.remove(player.getUniqueId());
+}
+```
+
+## Event Data Summary
+
+<CardGroup cols={3}>
+  <Card title="EmberPlayerJoinEvent" icon="user">
+    **Data:**
+    - Player
+    
+    **Use Case:**
+    Detect Ember Client users
+  </Card>
+  
+  <Card title="EmberAttestationRegisterEvent" icon="key">
+    **Data:**
+    - Player
+    - AttestationRegisterResult
+    - X509EncodedKeySpec (public key)
+    
+    **Use Case:**
+    Store public key for 2FA
+  </Card>
+  
+  <Card title="EmberAttestationSignEvent" icon="signature">
+    **Data:**
+    - Player
+    - AttestationSignResult
+    - byte[] (signed data)
+    
+    **Use Case:**
+    Verify authentication signatures
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always check event status before processing data">
+    The `getStatus()` method tells you whether the operation succeeded. Only access `getPublicKey()` or `getSignedData()` when status is `SUCCESS`:
+    
+    ```java
+    if (event.getStatus() == AttestationRegisterResult.SUCCESS) {
+        X509EncodedKeySpec publicKey = event.getPublicKey();
+        // Safe to use publicKey
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle all possible status values">
+    Don't just check for `SUCCESS` - handle failure cases to provide helpful feedback:
+    
+    ```java
+    switch (event.getStatus()) {
+        case SUCCESS:
+            // Handle success
+            break;
+        case USER_CANCELLED:
+            // User cancelled
+            break;
+        case SIGNING_NOT_ALLOWED:
+            // Device doesn't support it
+            break;
+        default:
+            // Unknown error
+            break;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Store public keys securely">
+    Public keys should be stored in a secure database, associated with the player's UUID. Use proper encryption for your database:
+    
+    ```java
+    // Store the encoded public key bytes
+    byte[] encodedKey = event.getPublicKey().getEncoded();
+    database.storePublicKey(player.getUniqueId(), encodedKey);
+    ```
+  </Accordion>
+  
+  <Accordion title="Clean up pending verifications">
+    If you track pending sign requests, always clean them up after receiving the event:
+    
+    ```java
+    try {
+        // Process the signature
+    } finally {
+        pendingVerifications.remove(player.getUniqueId());
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Attestation Concept" icon="shield-check" href="/concepts/attestation">
+    Learn more about how attestation authentication works
+  </Card>
+  
+  <Card title="Attestation Guide" icon="code" href="/guides/attestation-registration">
+    Step-by-step guide to implementing attestation in your plugin
+  </Card>
+</CardGroup>
