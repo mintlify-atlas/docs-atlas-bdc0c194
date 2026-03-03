@@ -1,0 +1,65 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Ember Client Server API",
+  "projectDescription": "Java library for Minecraft servers to interact with Ember Client and implement attestation-based authentication.",
+  "theme": "aspen",
+  "primaryColor": "#E67E22",
+  "lightColor": "#F39C12",
+  "darkColor": "#D35400",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/packets",
+          "concepts/events",
+          "concepts/attestation"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/ecserverapi",
+          "api/packet-manager",
+          "api/packets",
+          "api/events"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/attestation-registration",
+          "guides/attestation-signing",
+          "guides/player-detection",
+          "guides/custom-packets"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Attestation-based 2FA authentication",
+    "Player detection for Ember Client users",
+    "Custom packet communication system",
+    "Event-driven API for server integrations"
+  ],
+  "publicApiSurface": [
+    "ECServerAPI.getInstance()",
+    "ECServerAPI.sendPacket(Player, Packet)",
+    "ECServerAPI.isPlayerOnEmber(UUID)",
+    "EmberPlayerJoinEvent",
+    "EmberAttestationRegisterEvent",
+    "EmberAttestationSignEvent",
+    "OutAttestationRegister",
+    "OutAttestationSign",
+    "Packet",
+    "PacketManager"
+  ]
+}
